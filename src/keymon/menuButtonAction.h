@@ -86,9 +86,9 @@ bool terminate_retroarch(void) {
         // wait for terminate
         sprintf(fname, "/proc/%d", pid);
 
-        uint32_t count = 20; // 4s
+        uint32_t count = 15; // 3s
         while (--count && exists(fname))
-            usleep(200000); // 0.2s
+            usleep(150000); // 0.15s
 
         return true;
     }
@@ -227,10 +227,10 @@ bool menuButtonAction(uint32_t val, bool comboKey)
         if (system_state == MODE_MAIN_UI) {
             if (settings.mainui_single_press != 0)
                 keyinput_disable();
-            menu_long_press_timeout = 300;
+            menu_long_press_timeout = 100;
         }
         else {
-            menu_long_press_timeout = 1000;
+            menu_long_press_timeout = 350;
         }
         menu_last_pressed = getMilliseconds();
         menu_last_state = system_state;
