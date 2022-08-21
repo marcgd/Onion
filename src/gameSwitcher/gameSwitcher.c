@@ -26,7 +26,7 @@
 #include "utils/keystate.h"
 #include "system/keymap_sw.h"
 
-#define MAXHISTORY 50
+#define MAXHISTORY 25
 #define MAXHROMNAMESIZE 250
 #define MAXHROMPATHSIZE 150
 
@@ -59,7 +59,6 @@ static void sigHandler(int sig)
     }
 }
 
-char sTotalTimePlayed[50];
 
 // Game history list
 typedef struct
@@ -67,7 +66,6 @@ typedef struct
     uint32_t hash;
     char name[MAXHROMNAMESIZE];
     char RACommand[STR_MAX * 2 + 80] ;
-    char totalTime[30];
     int jsonIndex;
 } Game_s;
 static Game_s game_list[MAXHISTORY];
@@ -82,7 +80,6 @@ static cJSON* items = NULL;
 struct structPlayActivity
 {
     char name[100];
-    int playTime;
 }
 rom_list[MAXVALUES];
 int rom_list_len = 0;
@@ -120,29 +117,6 @@ void SetBrightness(int value) // value = 0-10
     setMiyooLum(value);
 }
 
-int readRomDB()
-{
-    FILE *fp;
-    int totalTimePlayed = 0 ;
-    // Check to avoid corruption
-    if (exists(ROM_DB_PATH)) {
-        FILE * file = fopen(ROM_DB_PATH, "rb");
-        fread(rom_list, sizeof(rom_list), 1, file);
-        rom_list_len = 0;
-
-        for (int i=0; i<MAXVALUES; i++){
-            if (strlen(rom_list[i].name) == 0)
-                break;
-            totalTimePlayed += rom_list[rom_list_len].playTime;
-            rom_list_len++;
-        }
-
-        int h = totalTimePlayed / 3600;
-        sprintf(sTotalTimePlayed, "%dh", h);
-        fclose(file);
-    }
-    return 1;
-}
 
 int searchRomDB(char* romName){
     int position = -1;
@@ -188,18 +162,6 @@ void readHistory()
         game->hash = FNV1A_Pippip_Yurii(path, strlen(path));
         game->jsonIndex = nbGame;
 
-        // Rom name
-        int nTimePosition = searchRomDB(game->name);
-
-        if (nTimePosition >= 0){
-            int nTime = rom_list[nTimePosition].playTime;
-            if (nTime >= 0) {
-                int h = nTime / 3600;
-                int m = (nTime - 3600 * h) / 60;
-                sprintf(game->totalTime, "%d:%02d / %s", h, m, sTotalTimePlayed);
-            }
-        }
-
         game_list_len++;
     }
 }
@@ -240,24 +202,17 @@ int main(void)
 
     SDL_Color    color = {255,255,255,0};
     TTF_Font*    font;
-    SDL_Surface*    imagePlay;
     SDL_Surface*    imageGameName;
     SDL_Surface*     surfaceArrowLeft = IMG_Load("res/arrowLeft.png");
     SDL_Surface*     surfaceArrowRight = IMG_Load("res/arrowRight.png");
 
-    SDL_Rect    rectBatt = { 566, -1, 113, 29};
     SDL_Rect    rectLum = { 106, 59, 40, 369};
-    SDL_Rect    rectWhiteLigne = { 0, 0, 1280, 39};
     SDL_Rect    rectMenuBar = {0,0,640,480};
-    SDL_Rect    rectTime = { 263, -1, 150, 39};
-    SDL_Rect    rectBatteryIcon = {541,6,13,27};
-    SDL_Rect    rectFooterHelp = { 420, 441, 220, 39};
-    SDL_Rect    rectGameName = { 9, 439, 640, 39};
+    SDL_Rect    rectGameName = { 9, 447, 640, 47};
 
     SDL_Rect     rectArrowLeft = { 6, 217, 28, 32};
     SDL_Rect     rectArrowRight = { 604, 217, 28, 32};
 
-    readRomDB();
     readHistory();
 
     print_debug("Read ROM DB and history");
@@ -265,12 +220,6 @@ int main(void)
     int nExitToMiyoo = 0;
 
     SDL_Surface* imageMenuBar = IMG_Load("res/menuBar.png");
-    SDL_Surface* imageTuto;
-
-    int bShowBoot = 0;
-
-    int input_fd = open("/dev/input/event0", O_RDONLY);
-    struct input_event ev;
 
     int firstPass = 1;
 
@@ -282,7 +231,7 @@ int main(void)
     SDL_Surface *video = SDL_SetVideoMode(640, 480, 32, SDL_HWSURFACE);
     SDL_Surface *screen = SDL_CreateRGBSurface(SDL_HWSURFACE, 640, 480, 32, 0, 0, 0, 0);
 
-    font = TTF_OpenFont("/customer/app/Exo-2-Bold-Italic.ttf", 30);
+    font = TTF_OpenFont("/customer/app/Helvetica-Neue-2.ttf", 22);
 
     print_debug("Loading images");
 
@@ -291,15 +240,11 @@ int main(void)
     SDL_Surface* imageBackgroundNoGame= IMG_Load("res/noGame.png");
     SDL_Surface* imageRemoveDialog= IMG_Load("res/removeDialog.png");
     SDL_Surface* imageBackgroundGame = NULL;
-    SDL_Surface* imageFooterHelp = IMG_Load("res/footerHelp.png");
 
     uint32_t acc_ticks = 0,
-			 last_ticks = SDL_GetTicks(),
-			 time_step = 1000 / 60;
+			 last_ticks = SDL_GetTicks();
 
-    bool changed = true;
     KeyState keystate[320] = {(KeyState)0};
-    bool menu_pressed = false;
 
 	while (!quit) {
 		uint32_t ticks = SDL_GetTicks();
@@ -322,11 +267,8 @@ int main(void)
                 SDL_BlitSurface(surfaceArrowRight, NULL, screen, &rectArrowRight);
         }
         else if (updateKeystate(keystate, &quit, true, NULL)) {
-			if (keystate[SW_BTN_MENU] == PRESSED)
-                menu_pressed = true;
-
-            if (keystate[SW_BTN_MENU] == RELEASED && menu_pressed) {
-                quit = true;
+			if (keystate[SW_BTN_MENU] == PRESSED) {
+                nExitToMiyoo = 1;
                 break;
             }
 
@@ -356,7 +298,6 @@ int main(void)
             // }
 
             if (keystate[SW_BTN_START] == PRESSED) {
-                nExitToMiyoo = 1;
                 break;
             }
 
@@ -364,8 +305,6 @@ int main(void)
                 break;
             
             if (keystate[SW_BTN_B] == PRESSED) {
-                nExitToMiyoo = checkQuitAction();
-                quit = true;
                 break;
             }
 
@@ -390,8 +329,6 @@ int main(void)
             }
         }
 
-        long lSize;
-        FILE *fp;
 
         if (game_list_len == 0) {
             SDL_BlitSurface(imageBackgroundNoGame, NULL, screen, NULL);
@@ -421,8 +358,6 @@ int main(void)
             SDL_BlitSurface(imageGameName, NULL, screen, &rectGameName);
         }
 
-        SDL_BlitSurface(imageFooterHelp, NULL, screen, &rectFooterHelp);
-
         if (bBrightChange == 1) {
             // Display luminosity slider
             int nLum = getMiyooLum();
@@ -434,8 +369,6 @@ int main(void)
             SDL_FreeSurface(imageLum);
         }
 
-        imagePlay = TTF_RenderUTF8_Blended(font, game_list[current_game].totalTime, color);
-        SDL_BlitSurface(imagePlay, NULL, screen, &rectTime);
 
         if (keystate[SW_BTN_X] == PRESSED) {
             if (game_list_len != 0) {
@@ -480,9 +413,9 @@ int main(void)
         print_debug("Exiting to menu");
     }
 
-    #ifndef PLATFORM_MIYOOMINI
-    msleep(200);
-    #endif
+    // #ifndef PLATFORM_MIYOOMINI
+    // msleep(100);
+    // #endif
 
     cJSON_free(json_root);
 
@@ -498,7 +431,6 @@ int main(void)
 
     SDL_FreeSurface(imageMenuBar);
 
-    SDL_FreeSurface(imagePlay);
     SDL_FreeSurface(surfaceArrowLeft);
     SDL_FreeSurface(surfaceArrowRight);
 
