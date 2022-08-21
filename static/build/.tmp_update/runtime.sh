@@ -87,8 +87,8 @@ launch_main_ui() {
     cd $sysdir
     ./bin/mainUiBatPerc 2>&1 >> ./logs/mainUiBatPerc.log
 
-    check_hide_recents
-    check_hide_expert
+    # check_hide_recents
+    # check_hide_expert
 
     # MainUI launch
     cd /mnt/SDCARD/miyoo/app
