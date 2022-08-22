@@ -21,13 +21,13 @@
 #include "utils/utils.h"
 #include "utils/json.h"
 #include "utils/hash.h"
-#include "utils/msleep.h"
+// #include "utils/msleep.h"
 #include "utils/log.h"
 #include "utils/keystate.h"
 #include "system/keymap_sw.h"
 #include "utils/imageCache.h"
 
-#define MAXHISTORY 50
+#define MAXHISTORY 25
 #define MAXHROMNAMESIZE 250
 #define MAXHROMPATHSIZE 150
 
@@ -60,15 +60,12 @@ static void sigHandler(int sig)
     }
 }
 
-char sTotalTimePlayed[20];
-
 // Game history list
 typedef struct
 {
     uint32_t hash;
     char name[MAXHROMNAMESIZE];
     char RACommand[STR_MAX * 2 + 80] ;
-    char totalTime[50];
     int jsonIndex;
 } Game_s;
 static Game_s game_list[MAXHISTORY];
@@ -121,29 +118,6 @@ void SetBrightness(int value) // value = 0-10
     setMiyooLum(value);
 }
 
-int readRomDB()
-{
-    int totalTimePlayed = 0 ;
-    // Check to avoid corruption
-    if (exists(ROM_DB_PATH)) {
-        FILE * file = fopen(ROM_DB_PATH, "rb");
-        fread(rom_list, sizeof(rom_list), 1, file);
-        rom_list_len = 0;
-
-        for (int i=0; i<MAXVALUES; i++){
-            if (strlen(rom_list[i].name) == 0)
-                break;
-            totalTimePlayed += rom_list[rom_list_len].playTime;
-            rom_list_len++;
-        }
-
-        int h = totalTimePlayed / 3600;
-        snprintf(sTotalTimePlayed, 19, "%dh", h);
-        fclose(file);
-    }
-    return 1;
-}
-
 int searchRomDB(char* romName){
     int position = -1;
 
@@ -188,18 +162,6 @@ void readHistory()
         game->hash = FNV1A_Pippip_Yurii(path, strlen(path));
         game->jsonIndex = nbGame;
 
-        // Rom name
-        int nTimePosition = searchRomDB(game->name);
-
-        if (nTimePosition >= 0){
-            int nTime = rom_list[nTimePosition].playTime;
-            if (nTime >= 0) {
-                int h = nTime / 3600;
-                int m = (nTime - 3600 * h) / 60;
-                snprintf(game->totalTime, 49, "%d:%02d / %s", h, m, sTotalTimePlayed);
-            }
-        }
-
         game_list_len++;
     }
 }
@@ -241,7 +203,6 @@ int main(void)
     signal(SIGINT, sigHandler);
     signal(SIGTERM, sigHandler);
 
-    readRomDB();
     readHistory();
 
     print_debug("Read ROM DB and history");
@@ -250,16 +211,14 @@ int main(void)
 
     SDL_Color color = {255,255,255,0};
     TTF_Font *font;
-    SDL_Surface *imagePlay;
     SDL_Surface *imageGameName;
     SDL_Surface *surfaceArrowLeft = IMG_Load("res/arrowLeft.png");
     SDL_Surface *surfaceArrowRight = IMG_Load("res/arrowRight.png");
 
     SDL_Rect rectLum = {106, 59, 40, 369};
     SDL_Rect rectMenuBar = {0, 0, 640, 480};
-    SDL_Rect rectTime = {263, -1, 150, 39};
     SDL_Rect rectFooterHelp = {420, 441, 220, 39};
-    SDL_Rect rectGameName = {9, 439, 640, 39};
+    SDL_Rect rectGameName = { 9, 447, 640, 47};
 
     SDL_Rect rectArrowLeft = { 6, 217, 28, 32};
     SDL_Rect rectArrowRight = { 604, 217, 28, 32};
@@ -276,7 +235,7 @@ int main(void)
     SDL_Surface *video = SDL_SetVideoMode(640, 480, 32, SDL_HWSURFACE);
     SDL_Surface *screen = SDL_CreateRGBSurface(SDL_HWSURFACE, 640, 480, 32, 0, 0, 0, 0);
 
-    font = TTF_OpenFont("/customer/app/Exo-2-Bold-Italic.ttf", 30);
+    font = TTF_OpenFont("/customer/app/Helvetica-Neue-2.ttf", 22);
 
     print_debug("Loading images");
 
@@ -290,17 +249,13 @@ int main(void)
     bool image_drawn = false;
 
     KeyState keystate[320] = {(KeyState)0};
-    bool menu_pressed = false;
 
 	while (!quit) {
         int bBrightChange = 0;
 
         if (updateKeystate(keystate, &quit, true, NULL)) {
-			if (keystate[SW_BTN_MENU] == PRESSED)
-                menu_pressed = true;
-
-            if (keystate[SW_BTN_MENU] == RELEASED && menu_pressed) {
-                quit = true;
+			if (keystate[SW_BTN_MENU] == PRESSED) {
+                nExitToMiyoo = 1;
                 break;
             }
 
@@ -317,7 +272,6 @@ int main(void)
             }
 
             if (keystate[SW_BTN_START] == PRESSED) {
-                nExitToMiyoo = 1;
                 break;
             }
 
@@ -325,8 +279,6 @@ int main(void)
                 break;
             
             if (keystate[SW_BTN_B] == PRESSED) {
-                nExitToMiyoo = checkQuitAction();
-                quit = true;
                 break;
             }
 
@@ -425,9 +377,6 @@ int main(void)
             SDL_FreeSurface(imageLum);
         }
 
-        imagePlay = TTF_RenderUTF8_Blended(font, game_list[current_game].totalTime, color);
-        SDL_BlitSurface(imagePlay, NULL, screen, &rectTime);
-
         SDL_BlitSurface(screen, NULL, video, NULL);
         SDL_Flip(video);
 
@@ -448,9 +397,9 @@ int main(void)
         print_debug("Exiting to menu");
     }
 
-    #ifndef PLATFORM_MIYOOMINI
-    msleep(200);
-    #endif
+    // #ifndef PLATFORM_MIYOOMINI
+    // msleep(200);
+    // #endif
 
     cJSON_free(json_root);
 
@@ -467,7 +416,6 @@ int main(void)
 
     SDL_FreeSurface(imageMenuBar);
 
-    SDL_FreeSurface(imagePlay);
     SDL_FreeSurface(surfaceArrowLeft);
     SDL_FreeSurface(surfaceArrowRight);
 
