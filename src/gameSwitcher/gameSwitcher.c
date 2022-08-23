@@ -253,7 +253,7 @@ int main(void)
     SDL_Color color_white = {255, 255, 255};
 
     SDL_Rect game_name_bg_size = {0, 0, 640, 60};
-    SDL_Rect game_name_bg_pos = {0, 360};
+    SDL_Rect game_name_bg_pos = {0, 420};
 
     int nExitToMiyoo = 0;
 
@@ -271,16 +271,12 @@ int main(void)
     int game_name_max_width = 640 - 2 * game_name_padding;
     SDL_Rect game_name_size = {0, 0};
 
-    int battery_percentage = battery_getPercentage();
-
     bool changed = true;
     bool image_drawn = false;
 
     KeyState keystate[320] = {(KeyState)0};
     bool select_pressed = false;
 
-    bool view_min = config_flag_get("gameSwitcher-minimal");
-    bool show_legend = !config_flag_get("gameSwitcher-hideLegend");
     int view_mode = view_min ? 1 : 0, view_restore;
 
     SDLKey changed_key = SDLK_UNKNOWN;
@@ -298,11 +294,6 @@ int main(void)
 		acc_ticks += ticks - last_ticks;
 		last_ticks = ticks;
         int bBrightChange = 0;
-
-        if (show_legend && ticks - start > legend_timeout) {
-            show_legend = false;
-            config_flag_set("gameSwitcher-hideLegend", true);
-        }
 
         if (updateKeystate(keystate, &quit, true, &changed_key)) {
 			if (keystate[SW_BTN_MENU] == PRESSED) {
@@ -419,9 +410,6 @@ int main(void)
             }
         }
 
-		if (battery_hasChanged(ticks, &battery_percentage))
-			changed = true;
-
         if (!changed && image_drawn && bBrightChange == 0)
             continue;
 
@@ -446,9 +434,8 @@ int main(void)
                 }
             }
 
-            if (view_mode >= 0 && game_list_len > 0) {
+            if (game_list_len > 0) {
                 char *game_name_str = game_list[current_game].shortname;
-                game_name_bg_pos.y = view_mode == 0 ? 360 : 420;
                 SDL_BlitSurface(transparent_bg, &game_name_bg_size, screen, &game_name_bg_pos);
 
                 if (current_game > 0) {
@@ -471,23 +458,7 @@ int main(void)
                 SDL_FreeSurface(game_name);
             }
 
-            if (view_mode == 0) {
-				theme_renderFooter(screen);
-				theme_renderStandardHint(screen, "RESUME", lang_get(LANG_BACK));
-                theme_renderFooterStatus(screen, game_list_len > 0 ? current_game + 1 : 0, game_list_len);
-            }
-
-            if (view_mode == 0) {
-                char title_str[STR_MAX] = "GameSwitcher";
-                theme_renderHeader(screen, title_str, true);
-				theme_renderHeaderBattery(screen, battery_percentage);
-            }
-
-            if (show_legend && view_mode >= 0) {
-                SDL_Surface *legend = resource_getSurface(LEGEND_GAMESWITCHER);
-                SDL_Rect legend_rect = {640 - legend->w, view_mode == 0 ? 60 : 0};
-                SDL_BlitSurface(legend, NULL, screen, &legend_rect);
-            }
+            // game_list_len > 0 ? current_game + 1 : 0, game_list_len // Current / total
 
             if (bBrightChange == 1) {
                 // Display luminosity slider
