@@ -222,8 +222,8 @@ int main(void)
 
     SDL_Color color_white = {255, 255, 255};
 
-    SDL_Rect game_name_bg_size = {0, 0, 640, 60};
-    SDL_Rect game_name_bg_pos = {0, 420};
+    SDL_Rect game_name_bg_size = {0, 0, 640, 40};
+    SDL_Rect game_name_bg_pos = {0, 440};
 
     int nExitToMiyoo = 0;
 
@@ -388,19 +388,19 @@ int main(void)
                 SDL_BlitSurface(transparent_bg, &game_name_bg_size, screen, &game_name_bg_pos);
 
                 if (current_game > 0) {
-                    SDL_Rect arrow_left_rect = {10, game_name_bg_pos.y + 30 - arrow_left->h / 2};
+                    SDL_Rect arrow_left_rect = {10, game_name_bg_pos.y + 15 - arrow_left->h / 2};
                     SDL_BlitSurface(arrow_left, NULL, screen, &arrow_left_rect);
                 }
 
                 if (current_game < game_list_len - 1) {
-                    SDL_Rect arrow_right_rect = {630 - arrow_right->w, game_name_bg_pos.y + 30 - arrow_right->h / 2};
+                    SDL_Rect arrow_right_rect = {630 - arrow_right->w, game_name_bg_pos.y + 15 - arrow_right->h / 2};
                     SDL_BlitSurface(arrow_right, NULL, screen, &arrow_right_rect);
                 }
                 
                 SDL_Surface *game_name = TTF_RenderUTF8_Blended(resource_getFont(TITLE), game_name_str, color_white);
                 game_name_size.w = game_name->w < game_name_max_width ? game_name->w : game_name_max_width;
                 game_name_size.h = game_name->h;
-                SDL_Rect game_name_rect = {320 - game_name->w / 2, game_name_bg_pos.y + 30 - game_name->h / 2};
+                SDL_Rect game_name_rect = {320 - game_name->w / 2, game_name_bg_pos.y + 15 - game_name->h / 2};
                 if (game_name_rect.x < game_name_padding)
                     game_name_rect.x = game_name_padding;
                 SDL_BlitSurface(game_name, &game_name_size, screen, &game_name_rect);
