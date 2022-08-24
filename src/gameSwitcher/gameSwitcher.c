@@ -24,8 +24,17 @@
 // #include "utils/msleep.h"
 #include "utils/log.h"
 #include "utils/keystate.h"
-#include "system/keymap_sw.h"
+#include "utils/config.h"
+#include "utils/surfaceSetAlpha.h"
+#include "utils/sdl_init.h"
 #include "utils/imageCache.h"
+#include "system/battery.h"
+#include "system/keymap_sw.h"
+#include "system/settings.h"
+#include "system/lang.h"
+#include "theme/theme.h"
+#include "theme/background.h"
+#include "theme/sound.h"
 
 #define MAXHISTORY 25
 #define MAXHROMNAMESIZE 250
@@ -65,6 +74,7 @@ typedef struct
 {
     uint32_t hash;
     char name[MAXHROMNAMESIZE];
+    char shortname[STR_MAX];
     char RACommand[STR_MAX * 2 + 80] ;
     int jsonIndex;
 } Game_s;
@@ -86,38 +96,6 @@ rom_list[MAXVALUES];
 int rom_list_len = 0;
 int bDisplayBoxArt = 0;
 
-int getMiyooLum(void)
-{
-    cJSON* request_json = json_load(SYSTEM_CONFIG);
-    int brightness = 10;
-    json_getInt(request_json, "brightness", &brightness);
-    cJSON_free(request_json);
-    return brightness;
-}
-
-void setMiyooLum(int nLum)
-{
-    cJSON* request_json = json_load(SYSTEM_CONFIG);
-    cJSON* itemBrightness = cJSON_GetObjectItem(request_json, "brightness");
-
-    cJSON_SetNumberValue(itemBrightness, nLum);
-
-    json_save(request_json, SYSTEM_CONFIG);
-    cJSON_free(request_json);
-}
-
-void SetRawBrightness(int val) // val = 0-100
-{
-    FILE *fp;
-    file_put(fp, "/sys/class/pwm/pwmchip0/pwm0/duty_cycle", "%d", val);
-}
-
-void SetBrightness(int value) // value = 0-10
-{
-    SetRawBrightness(value==0 ? 6 : value * 10);
-    setMiyooLum(value);
-}
-
 int searchRomDB(char* romName){
     int position = -1;
 
@@ -130,6 +108,29 @@ int searchRomDB(char* romName){
     return position;
 }
 
+void removeParentheses(char *str_out, const char *str_in)
+{
+    char temp[STR_MAX];
+    int len = strlen(str_in);
+    int c = 0;
+    bool inside = false;
+
+    for (int i = 0; i < len && i < STR_MAX; i++) {
+        if (!inside && str_in[i] == '(') {
+            inside = true;
+            continue;
+        }
+        else if (inside) {
+            if (str_in[i] == ')') inside = false;
+            continue;
+        }
+        temp[c++] = str_in[i];
+    }
+
+    temp[c] = '\0';
+
+    str_trim(str_out, STR_MAX - 1, temp, false);
+}
 
 void readHistory()
 {
@@ -163,6 +164,13 @@ void readHistory()
         game->jsonIndex = nbGame;
 
         game_list_len++;
+    }
+
+    for (int i = 0; i < game_list_len; i++) {
+        Game_s *game = &game_list[i];
+        char shortname[STR_MAX];
+        removeParentheses(shortname, file_removeExtension(game->name));
+        strcpy(game->shortname, shortname);
     }
 }
 
@@ -209,66 +217,70 @@ int main(void)
 
     imageCache_load(&current_game, loadRomscreen, game_list_len);
 
-    SDL_Color color = {255,255,255,0};
-    TTF_Font *font;
-    SDL_Surface *imageGameName;
-    SDL_Surface *surfaceArrowLeft = IMG_Load("res/arrowLeft.png");
-    SDL_Surface *surfaceArrowRight = IMG_Load("res/arrowRight.png");
+	settings_load();
+	lang_load();
 
-    SDL_Rect rectLum = {106, 59, 40, 369};
-    SDL_Rect rectMenuBar = {0, 0, 640, 480};
-    SDL_Rect rectFooterHelp = {420, 441, 220, 39};
-    SDL_Rect rectGameName = { 9, 447, 640, 47};
+    SDL_Color color_white = {255, 255, 255};
 
-    SDL_Rect rectArrowLeft = { 6, 217, 28, 32};
-    SDL_Rect rectArrowRight = { 604, 217, 28, 32};
+    SDL_Rect game_name_bg_size = {0, 0, 640, 40};
+    SDL_Rect game_name_bg_pos = {0, 440};
 
     int nExitToMiyoo = 0;
 
-    SDL_Surface *imageMenuBar = IMG_Load("res/menuBar.png");
-
-    SDL_Init(SDL_INIT_VIDEO);
-    SDL_ShowCursor(SDL_DISABLE);
-    SDL_EnableKeyRepeat(300, 50);
-    TTF_Init();
-
-    SDL_Surface *video = SDL_SetVideoMode(640, 480, 32, SDL_HWSURFACE);
-    SDL_Surface *screen = SDL_CreateRGBSurface(SDL_HWSURFACE, 640, 480, 32, 0, 0, 0, 0);
-
-    font = TTF_OpenFont("/customer/app/Helvetica-Neue-2.ttf", 22);
+    SDL_InitDefault(true);
 
     print_debug("Loading images");
+    
+    SDL_Surface *transparent_bg = SDL_CreateRGBSurface(0, 640, 480, 32,
+        0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
+    SDL_FillRect(transparent_bg, NULL, 0xBE000000);
 
-    SDL_Surface *imageBackgroundDefault = IMG_Load("res/bootScreen.png");
-    SDL_Surface *imageBackgroundLowBat = IMG_Load("res/lowBat.png");
-    SDL_Surface *imageBackgroundNoGame= IMG_Load("res/noGame.png");
-    SDL_Surface *imageRemoveDialog= IMG_Load("res/removeDialog.png");
-    SDL_Surface *imageFooterHelp = IMG_Load("res/footerHelp.png");
+    SDL_Surface *arrow_left = resource_getSurface(LEFT_ARROW_WB);
+    SDL_Surface *arrow_right = resource_getSurface(RIGHT_ARROW_WB);
+    int game_name_padding = arrow_left->w + 20;
+    int game_name_max_width = 640 - 2 * game_name_padding;
+    SDL_Rect game_name_size = {0, 0};
 
     bool changed = true;
+    bool brightness_changed = false;
     bool image_drawn = false;
 
     KeyState keystate[320] = {(KeyState)0};
+    bool select_pressed = false;
+
+    int view_mode = 0;
+
+    SDLKey changed_key = SDLK_UNKNOWN;
+
+	uint32_t acc_ticks = 0,
+			 last_ticks = SDL_GetTicks(),
+			 time_step = 1000 / 30;
 
 	while (!quit) {
-        int bBrightChange = 0;
+		uint32_t ticks = SDL_GetTicks();
+		acc_ticks += ticks - last_ticks;
+		last_ticks = ticks;
 
-        if (updateKeystate(keystate, &quit, true, NULL)) {
+        brightness_changed = false;
+
+        if (updateKeystate(keystate, &quit, true, &changed_key)) {
 			if (keystate[SW_BTN_MENU] == PRESSED) {
                 nExitToMiyoo = 1;
                 break;
             }
 
             if (keystate[SW_BTN_RIGHT] >= PRESSED) {
-                if (current_game < game_list_len - 1)
+                if (current_game < game_list_len - 1) {
                     current_game++;
-                changed = true;
+                    changed = true;
+                }
             }
 
             if (keystate[SW_BTN_LEFT] >= PRESSED) {
-                if (current_game > 0)
+                if (current_game > 0) {
                     current_game--;
-                changed = true;
+                    changed = true;
+                }
             }
 
             if (keystate[SW_BTN_START] == PRESSED) {
@@ -279,34 +291,47 @@ int main(void)
                 break;
             
             if (keystate[SW_BTN_B] == PRESSED) {
+                current_game = 0;
                 break;
             }
 
             if (keystate[SW_BTN_UP] >= PRESSED){
                 // Change brightness
-                bBrightChange = 1;
-                int brightVal = getMiyooLum();
-                if (brightVal < 10) {
-                    brightVal++;
-                    SetBrightness(brightVal);
+                if (settings.brightness < 10) {
+                    settings_setBrightness(settings.brightness + 1, true, true);
+                    brightness_changed = true;
+                    changed = true;
                 }
             }
 
             if (keystate[SW_BTN_DOWN] >= PRESSED){
                 // Change brightness
-                bBrightChange = 1;
-                int brightVal = getMiyooLum();
-                if (brightVal > 0) {
-                    brightVal--;
-                    SetBrightness(brightVal);
+                if (settings.brightness > 0) {
+                    settings_setBrightness(settings.brightness - 1, true, true);
+                    brightness_changed = true;
+                    changed = true;
                 }
             }
 
+            if (select_pressed && ((changed_key == SW_BTN_L2 && keystate[SW_BTN_L2] == RELEASED)
+                    || (changed_key == SW_BTN_R2 && keystate[SW_BTN_R2] == RELEASED))) {
+                settings_load();
+                brightness_changed = true;
+                changed = true;
+            }
+
+            if (changed_key == SW_BTN_SELECT) {
+                if (keystate[SW_BTN_SELECT] == PRESSED)
+                    select_pressed = true;
+            }
+
+
             if (keystate[SW_BTN_X] == PRESSED) {
                 if (game_list_len != 0) {
-                    SDL_BlitSurface(imageRemoveDialog, NULL, screen, NULL);
+                    theme_renderDialog(screen, "Remove from history", "Are you sure you want to\nremove game from history?", true);
                     SDL_BlitSurface(screen, NULL, video, NULL);
                     SDL_Flip(video);
+                    sound_change();
 
                     while (!quit) {
                         if (updateKeystate(keystate, &quit, true, NULL)) {
@@ -325,62 +350,83 @@ int main(void)
                             }
                         }
                     }
+
+                    theme_clearDialog();
                 }
             }
+
+            if (changed)
+                sound_change();
         }
 
-        if (!changed && image_drawn && bBrightChange == 0)
+        if (!changed && image_drawn && brightness_changed == false)
             continue;
 
-        if (game_list_len == 0) {
-            SDL_BlitSurface(imageBackgroundNoGame, NULL, screen, NULL);
-            image_drawn = true;
-        }
-        else {
-            SDL_Surface *imageBackgroundGame = imageCache_getItem(&current_game);
-            if (imageBackgroundGame != NULL) {
-                SDL_BlitSurface(imageBackgroundGame, NULL, screen, NULL);
+        if (acc_ticks >= time_step) {
+            if (game_list_len == 0) {
+                SDL_BlitSurface(theme_background(), NULL, screen, NULL);
+                SDL_Surface *empty = resource_getSurface(EMPTY_BG);
+                SDL_Rect empty_rect = {320 - empty->w / 2, 240 - empty->h / 2};
+                SDL_BlitSurface(empty, NULL, screen, &empty_rect);
                 image_drawn = true;
             }
             else {
-                SDL_BlitSurface(imageBackgroundDefault, NULL, screen, NULL);
-                if (imageCache_isActive())
-                    image_drawn = false;
+                SDL_Surface *imageBackgroundGame = imageCache_getItem(&current_game);
+                if (imageBackgroundGame != NULL) {
+                    SDL_BlitSurface(imageBackgroundGame, NULL, screen, NULL);
+                    image_drawn = true;
+                }
+                else {
+                    SDL_BlitSurface(theme_background(), NULL, screen, NULL);
+                    if (imageCache_isActive())
+                        image_drawn = false;
+                }
             }
+
+            if (game_list_len > 0) {
+                char *game_name_str = game_list[current_game].shortname;
+                SDL_BlitSurface(transparent_bg, &game_name_bg_size, screen, &game_name_bg_pos);
+
+                if (current_game > 0) {
+                    SDL_Rect arrow_left_rect = {10, game_name_bg_pos.y + 15 - arrow_left->h / 2};
+                    SDL_BlitSurface(arrow_left, NULL, screen, &arrow_left_rect);
+                }
+
+                if (current_game < game_list_len - 1) {
+                    SDL_Rect arrow_right_rect = {630 - arrow_right->w, game_name_bg_pos.y + 15 - arrow_right->h / 2};
+                    SDL_BlitSurface(arrow_right, NULL, screen, &arrow_right_rect);
+                }
+                
+                SDL_Surface *game_name = TTF_RenderUTF8_Blended(resource_getFont(TITLE), game_name_str, color_white);
+                game_name_size.w = game_name->w < game_name_max_width ? game_name->w : game_name_max_width;
+                game_name_size.h = game_name->h;
+                SDL_Rect game_name_rect = {320 - game_name->w / 2, game_name_bg_pos.y + 15 - game_name->h / 2};
+                if (game_name_rect.x < game_name_padding)
+                    game_name_rect.x = game_name_padding;
+                SDL_BlitSurface(game_name, &game_name_size, screen, &game_name_rect);
+                SDL_FreeSurface(game_name);
+            }
+
+            // game_list_len > 0 ? current_game + 1 : 0, game_list_len // Current / total
+
+            if (brightness_changed) {
+                // Display luminosity slider
+                SDL_Surface* brightness = resource_getBrightness(settings.brightness);
+                bool vertical = brightness->h > brightness->w;
+                SDL_Rect brightness_rect = {0, (view_mode == 0 ? 240 : 210) - brightness->h / 2};
+                if (!vertical) {
+                    brightness_rect.x = 320 - brightness->w / 2;
+                    brightness_rect.y = view_mode == 0 ? 60 : 0;
+                }
+                SDL_BlitSurface(brightness, NULL, screen, &brightness_rect);
+            }
+
+            SDL_BlitSurface(screen, NULL, video, NULL);
+            SDL_Flip(video);
+
+            changed = false;
+			acc_ticks -= time_step;
         }
-
-        if (current_game > 0) {
-            SDL_BlitSurface(surfaceArrowLeft, NULL, screen, &rectArrowLeft);
-        }
-
-        if (current_game < game_list_len - 1) {
-            SDL_BlitSurface(surfaceArrowRight, NULL, screen, &rectArrowRight);
-        }
-
-        SDL_BlitSurface(imageMenuBar, NULL, screen, &rectMenuBar);
-
-        if (game_list_len > 0) {
-            imageGameName = TTF_RenderUTF8_Blended(font, file_removeExtension(game_list[current_game].name), color);
-            SDL_BlitSurface(imageGameName, NULL, screen, &rectGameName);
-        }
-
-        SDL_BlitSurface(imageFooterHelp, NULL, screen, &rectFooterHelp);
-
-        if (bBrightChange == 1) {
-            // Display luminosity slider
-            int nLum = getMiyooLum();
-            char imageLumName[STR_MAX];
-            sprintf(imageLumName, "res/lum%d.png", nLum);
-            SDL_Surface* imageLum = IMG_Load(imageLumName);
-
-            SDL_BlitSurface(imageLum, NULL, screen, &rectLum);
-            SDL_FreeSurface(imageLum);
-        }
-
-        SDL_BlitSurface(screen, NULL, video, NULL);
-        SDL_Flip(video);
-
-        changed = false;
     }
 
     screen = SDL_CreateRGBSurface(SDL_HWSURFACE, 640,480, 32, 0,0,0,0);
@@ -406,19 +452,13 @@ int main(void)
     SDL_BlitSurface(screen, NULL, video, NULL);
     SDL_Flip(video);
 
-    SDL_FreeSurface(screen);
-    SDL_FreeSurface(video);
-
-    SDL_FreeSurface(imageBackgroundDefault);
-    SDL_FreeSurface(imageBackgroundLowBat);
-
+    resources_free();
+    SDL_FreeSurface(transparent_bg);
     imageCache_freeAll();
 
-    SDL_FreeSurface(imageMenuBar);
-
-    SDL_FreeSurface(surfaceArrowLeft);
-    SDL_FreeSurface(surfaceArrowRight);
-
+    SDL_FreeSurface(screen);
+    SDL_FreeSurface(video);
+    TTF_Quit();
     SDL_Quit();
 
     return EXIT_SUCCESS;
