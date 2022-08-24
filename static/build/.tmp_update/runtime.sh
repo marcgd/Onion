@@ -4,7 +4,7 @@ export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$sysdir/lib"
 
 main() {
     init_system
-    update_time
+    # update_time
     clear_logs
 
     # Start the battery monitor
@@ -16,10 +16,10 @@ main() {
     fi
 
     # Make sure MainUI doesn't show charging animation
-    touch /tmp/no_charging_ui
+    # touch /tmp/no_charging_ui
 
     cd $sysdir
-    ./bin/bootScreen "Boot"
+    # ./bin/bootScreen "Boot"
 
     # Start the key monitor
     ./bin/keymon 2>&1 > ./logs/keymon.log &
