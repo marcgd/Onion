@@ -27,9 +27,11 @@
 #include "utils/config.h"
 #include "utils/surfaceSetAlpha.h"
 #include "utils/sdl_init.h"
+#include "utils/imageCache.h"
 #include "system/battery.h"
 #include "system/keymap_sw.h"
-#include "utils/imageCache.h"
+#include "system/settings.h"
+#include "system/lang.h"
 #include "theme/theme.h"
 #include "theme/background.h"
 #include "theme/sound.h"
@@ -93,38 +95,6 @@ struct structPlayActivity
 rom_list[MAXVALUES];
 int rom_list_len = 0;
 int bDisplayBoxArt = 0;
-
-int getMiyooLum(void)
-{
-    cJSON* request_json = json_load(SYSTEM_CONFIG);
-    int brightness = 10;
-    json_getInt(request_json, "brightness", &brightness);
-    cJSON_free(request_json);
-    return brightness;
-}
-
-void setMiyooLum(int nLum)
-{
-    cJSON* request_json = json_load(SYSTEM_CONFIG);
-    cJSON* itemBrightness = cJSON_GetObjectItem(request_json, "brightness");
-
-    cJSON_SetNumberValue(itemBrightness, nLum);
-
-    json_save(request_json, SYSTEM_CONFIG);
-    cJSON_free(request_json);
-}
-
-void SetRawBrightness(int val) // val = 0-100
-{
-    FILE *fp;
-    file_put(fp, "/sys/class/pwm/pwmchip0/pwm0/duty_cycle", "%d", val);
-}
-
-void SetBrightness(int value) // value = 0-10
-{
-    SetRawBrightness(value==0 ? 6 : value * 10);
-    setMiyooLum(value);
-}
 
 int searchRomDB(char* romName){
     int position = -1;
@@ -272,28 +242,26 @@ int main(void)
     SDL_Rect game_name_size = {0, 0};
 
     bool changed = true;
+    bool brightness_changed = false;
     bool image_drawn = false;
 
     KeyState keystate[320] = {(KeyState)0};
     bool select_pressed = false;
 
-    int view_mode = view_min ? 1 : 0, view_restore;
+    int view_mode = 0;
 
     SDLKey changed_key = SDLK_UNKNOWN;
-    int button_y_repeat = 0;
 
 	uint32_t acc_ticks = 0,
 			 last_ticks = SDL_GetTicks(),
 			 time_step = 1000 / 30;
 
-    uint32_t start = last_ticks;
-    uint32_t legend_timeout = 5000;
-
 	while (!quit) {
 		uint32_t ticks = SDL_GetTicks();
 		acc_ticks += ticks - last_ticks;
 		last_ticks = ticks;
-        int bBrightChange = 0;
+
+        brightness_changed = false;
 
         if (updateKeystate(keystate, &quit, true, &changed_key)) {
 			if (keystate[SW_BTN_MENU] == PRESSED) {
@@ -328,29 +296,26 @@ int main(void)
 
             if (keystate[SW_BTN_UP] >= PRESSED){
                 // Change brightness
-                int brightVal = getMiyooLum();
-                if (brightVal < 10) {
-                    brightVal++;
-                    bBrightChange = 1;
+                if (settings.brightness < 10) {
+                    settings_setBrightness(settings.brightness + 1, true, true);
+                    brightness_changed = true;
                     changed = true;
-                    SetBrightness(brightVal);
                 }
             }
 
             if (keystate[SW_BTN_DOWN] >= PRESSED){
                 // Change brightness
-                int brightVal = getMiyooLum();
-                if (brightVal > 0) {
-                    brightVal--;
-                    bBrightChange = 1;
+                if (settings.brightness > 0) {
+                    settings_setBrightness(settings.brightness - 1, true, true);
+                    brightness_changed = true;
                     changed = true;
-                    SetBrightness(brightVal);
                 }
             }
 
             if (select_pressed && ((changed_key == SW_BTN_L2 && keystate[SW_BTN_L2] == RELEASED)
                     || (changed_key == SW_BTN_R2 && keystate[SW_BTN_R2] == RELEASED))) {
-                bBrightChange = 1;
+                settings_load();
+                brightness_changed = true;
                 changed = true;
             }
 
@@ -359,14 +324,6 @@ int main(void)
                     select_pressed = true;
             }
 
-            if (changed_key == SW_BTN_Y && keystate[SW_BTN_Y] == RELEASED) {
-                if (button_y_repeat < 75) {
-                    view_mode = view_mode == -1 ? view_restore : !view_mode;
-                    config_flag_set("gameSwitcher-minimal", view_mode == 1);
-                    changed = true;
-                }
-                button_y_repeat = 0;
-            }
 
             if (keystate[SW_BTN_X] == PRESSED) {
                 if (game_list_len != 0) {
@@ -401,16 +358,7 @@ int main(void)
                 sound_change();
         }
 
-        if (keystate[SW_BTN_Y] == PRESSED && view_mode != -1) {
-            button_y_repeat++;
-            if (button_y_repeat >= 75) {
-                view_restore = view_mode;
-                view_mode = -1;
-                changed = true;
-            }
-        }
-
-        if (!changed && image_drawn && bBrightChange == 0)
+        if (!changed && image_drawn && brightness_changed == false)
             continue;
 
         if (acc_ticks >= time_step) {
@@ -460,10 +408,9 @@ int main(void)
 
             // game_list_len > 0 ? current_game + 1 : 0, game_list_len // Current / total
 
-            if (bBrightChange == 1) {
+            if (brightness_changed) {
                 // Display luminosity slider
-                int brightness_value = getMiyooLum();
-                SDL_Surface* brightness = resource_getBrightness(brightness_value);
+                SDL_Surface* brightness = resource_getBrightness(settings.brightness);
                 bool vertical = brightness->h > brightness->w;
                 SDL_Rect brightness_rect = {0, (view_mode == 0 ? 240 : 210) - brightness->h / 2};
                 if (!vertical) {
