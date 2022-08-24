@@ -291,6 +291,7 @@ int main(void)
                 break;
             
             if (keystate[SW_BTN_B] == PRESSED) {
+                current_game = 0;
                 break;
             }
 
