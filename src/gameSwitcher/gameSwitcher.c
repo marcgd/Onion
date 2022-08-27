@@ -350,8 +350,6 @@ int main(void)
                             }
                         }
                     }
-
-                    theme_clearDialog();
                 }
             }
 

@@ -8,7 +8,7 @@ ra_package_version_file="/mnt/SDCARD/RetroArch/ra_package_version.txt"
 install_ra=1
 
 version() {
-    echo "$@" | awk -F. '{ printf("%d%03d%03d%03d\n", $1,$2,$3,$4); }';
+    echo "$@" | awk -F. '{ f=$1; if (substr(f,2,1) == "v") f = substr(f,3); printf("%d%03d%03d%03d\n", f,$2,$3,$4); }';
 }
 
 # An existing version of Onion's RetroArch exist
@@ -65,6 +65,18 @@ main() {
     cd $sysdir
     ./bin/batmon 2>&1 > ./logs/batmon.log &
 
+    onion_version=`cat /mnt/SDCARD/.tmp_update/onionVersion/version.txt`
+
+    if [ $(version $onion_version) -ge 4000000000 ]; then
+        prompt_update
+    else
+        prompt_upgrade
+    fi
+
+    cleanup
+}
+
+prompt_update() {
     # Prompt for update or fresh install
     ./bin/prompt -r -m "Welcome to the Onion installer!\nPlease choose an action:" \
         "Update" \
@@ -87,8 +99,27 @@ main() {
         # Cancel (can be reached if pressing POWER)
         return
     fi
+}
 
-    cleanup
+prompt_upgrade() {
+    # Prompt for update or fresh install
+    ./bin/prompt -r -m "Welcome to the Onion installer!\nPlease choose an action:" \
+        "Upgrade (keep settings)" \
+        "Reinstall (reset settings)"
+    retcode=$?
+
+    killall batmon
+
+    if [ $retcode -eq 0 ]; then
+        # Upgrade (keep settings)
+        fresh_install 0
+    elif [ $retcode -eq 1 ]; then
+        # Reinstall (reset settings)
+        fresh_install 1
+    else
+        # Cancel (can be reached if pressing POWER)
+        return
+    fi
 }
 
 cleanup() {
@@ -160,11 +191,10 @@ fresh_install() {
 
         # Remove stock folders
         cd /mnt/SDCARD
-        rm -rf Emu/* App/* RApp/* miyoo
-    else
-        debloat_apps
+        rm -rf miyoo
     fi
 
+    debloat_apps
     refresh_roms
 
     if [ $install_ra -eq 1 ]; then
@@ -194,6 +224,7 @@ fresh_install() {
     # Start the battery monitor
     cd $sysdir
     ./bin/batmon 2>&1 > ./logs/batmon.log &
+    ./bin/themeSwitcher --reapply
 
     cd /mnt/SDCARD/App/Onion_Manual/
     ./launch.sh
@@ -207,11 +238,26 @@ fresh_install() {
     cd $sysdir
     ./config/boot_mod.sh
 
-    # display turning off message
+    # Show installation complete
     cd $sysdir
-    ./bin/infoPanel -i "res/install_complete.png"
+    rm -f .installed
+    echo "Update complete!" >> /tmp/.update_msg
+    touch $sysdir/.waitConfirm
+    sync
+    ./bin/installUI &
+    sleep 1
 
-    cd $sysdir
+    echo "Press any button to turn off" >> /tmp/.update_msg
+    sleep 1
+
+    touch $sysdir/.installed
+
+    until [ ! -f $sysdir/.waitConfirm ]; do
+        sync
+    done
+
+    rm -f $sysdir/config/currentSlide
+
     ./bin/bootScreen "End"
 }
 
@@ -224,6 +270,8 @@ update_only() {
     cd $sysdir
     ./bin/installUI -m "Preparing update..." &
     sleep 1
+    
+    debloat_apps
 
     if [ $install_ra -eq 1 ]; then
         install_core "1/2: Updating Onion..."
@@ -236,6 +284,11 @@ update_only() {
     fi
 
     install_configs 0
+
+    # Start the battery monitor
+    cd $sysdir
+    ./bin/batmon 2>&1 > ./logs/batmon.log &
+    ./bin/themeSwitcher --reapply
     
     echo "Update complete!" >> /tmp/.update_msg
     sleep 1
@@ -243,7 +296,7 @@ update_only() {
     touch $sysdir/.waitConfirm
     sync
     
-    echo "Press any key to turn off" >> /tmp/.update_msg
+    echo "Press any button to turn off" >> /tmp/.update_msg
     sleep 1
 
     touch $sysdir/.installed
@@ -251,6 +304,8 @@ update_only() {
     until [ ! -f $sysdir/.waitConfirm ]; do
         sync
     done
+
+    rm -f $sysdir/config/currentSlide
 
     cd $sysdir
     ./bin/bootScreen "End"
@@ -305,6 +360,7 @@ install_retroarch() {
 
     # Backup old RA configuration
     cd /mnt/SDCARD/RetroArch
+    mkdir -p /mnt/SDCARD/Backup
     mv .retroarch/retroarch.cfg /mnt/SDCARD/Backup/
 
     # Remove old RetroArch before unzipping
@@ -391,12 +447,6 @@ backup_system() {
     if [ -d /mnt/SDCARD/Imgs ]; then
         mv -f /mnt/SDCARD/Imgs/* /mnt/SDCARD/Backup/Imgs
     fi
-
-    # Romscreens
-    if [ -d $sysdir/romScreens ]; then
-        mkdir -p /mnt/SDCARD/Saves/CurrentProfile/romScreens
-        mv -f $sysdir/romScreens/* /mnt/SDCARD/Saves/CurrentProfile/romScreens
-    fi
 }
 
 debloat_apps() {
@@ -405,23 +455,12 @@ debloat_apps() {
     rm -rf \
         Commander_CN \
         power \
-        RetroArch \
         swapskin \
-        Pal \
-        OpenBor \
-        Onion_Manual \
-        PlayActivity \
         Retroarch \
         The_Onion_Installer \
         Clean_View_Toggle \
-        StartGameSwitcher \
-        Guest_Mode \
-        SearchFilter \
-        ThemeSwitcher \
-        Clock \
-        240pSuite \
-        Gmu \
-        Commander_Italic
+        Onion_Manual \
+        PlayActivity
 }
 
 refresh_roms() {

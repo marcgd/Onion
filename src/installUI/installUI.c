@@ -13,10 +13,12 @@
 #include "utils/msleep.h"
 #include "utils/log.h"
 #include "utils/imageCache.h"
+#include "utils/config.h"
+#include "system/keymap_sw.h"
 
 #define TIMEOUT_M 10
 #define CHECK_TIMEOUT 300
-#define SLIDE_TIMEOUT 6000
+#define SLIDE_TIMEOUT 10000
 
 SDL_Surface* _loadSlide(int index)
 {
@@ -74,6 +76,7 @@ int main(int argc, char *argv[])
 
     int current_slide = -1;
     int num_slides = 8;
+    config_get("currentSlide", "%d", &current_slide);
     imageCache_load(&current_slide, _loadSlide, num_slides);
 
     bool quit = false;
@@ -97,7 +100,7 @@ int main(int argc, char *argv[])
         last_ticks = ticks;
 
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) {
+            if (event.type == SDL_QUIT || (event.type == SDL_KEYUP && exists(".waitConfirm"))) {
                 quit = true;
                 break;
             }
@@ -115,9 +118,10 @@ int main(int argc, char *argv[])
             slide_timer = ticks;
         }
         
-        if (exists(".installed")) {
+        if (exists(".installed") || exists(".waitConfirm")) {
             progress = 100;
-            quit = true;
+            if (!exists(".waitConfirm"))
+                quit = true;
         }
         
         if (exists(".installFailed")) {
@@ -135,7 +139,7 @@ int main(int argc, char *argv[])
                     progress = (int)(start_at + n / progress_div);
                 check_timer = ticks; // reset timeout
             }
-            else if (!quit && ticks - check_timer > TIMEOUT_M * 60 * 1000) {
+            else if (!quit && ticks - check_timer > TIMEOUT_M * 60 * 1000 && !exists(".waitConfirm")) {
                 sprintf(message_str, "The installation timed out, exiting...");
                 progress = 100;
                 failed = true;
@@ -184,20 +188,12 @@ int main(int argc, char *argv[])
     }
 
     if (exists(".installed") && exists(".waitConfirm")) {
-        quit = false;
-
-        while (!quit) {
-            while (SDL_PollEvent(&event)) {
-                if (event.type == SDL_KEYUP)
-                    quit = true;
-            }
-        }
-
         remove(".waitConfirm");
-        SDL_FillRect(screen, NULL, 0);
-        SDL_BlitSurface(screen, NULL, video, NULL); 
+        SDL_FillRect(video, NULL, 0);
         SDL_Flip(video);
     }
+
+    config_setNumber("currentSlide", current_slide);
     
     imageCache_freeAll();
     SDL_FreeSurface(waiting_bg);
