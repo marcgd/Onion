@@ -222,9 +222,6 @@ int main(void)
 
     SDL_Color color_white = {255, 255, 255};
 
-    SDL_Rect game_name_bg_size = {0, 0, 640, 40};
-    SDL_Rect game_name_bg_pos = {0, 440};
-
     int nExitToMiyoo = 0;
 
     SDL_InitDefault(true);
@@ -248,13 +245,13 @@ int main(void)
     KeyState keystate[320] = {(KeyState)0};
     bool select_pressed = false;
 
-    int view_mode = 0;
-
     SDLKey changed_key = SDLK_UNKNOWN;
 
 	uint32_t acc_ticks = 0,
 			 last_ticks = SDL_GetTicks(),
 			 time_step = 1000 / 30;
+
+    int header_height = 60;
 
 	while (!quit) {
 		uint32_t ticks = SDL_GetTicks();
@@ -361,8 +358,9 @@ int main(void)
             continue;
 
         if (acc_ticks >= time_step) {
+            SDL_BlitSurface(theme_background(), NULL, screen, NULL);
+
             if (game_list_len == 0) {
-                SDL_BlitSurface(theme_background(), NULL, screen, NULL);
                 SDL_Surface *empty = resource_getSurface(EMPTY_BG);
                 SDL_Rect empty_rect = {320 - empty->w / 2, 240 - empty->h / 2};
                 SDL_BlitSurface(empty, NULL, screen, &empty_rect);
@@ -375,7 +373,6 @@ int main(void)
                     image_drawn = true;
                 }
                 else {
-                    SDL_BlitSurface(theme_background(), NULL, screen, NULL);
                     if (imageCache_isActive())
                         image_drawn = false;
                 }
@@ -383,6 +380,9 @@ int main(void)
 
             if (game_list_len > 0) {
                 char *game_name_str = game_list[current_game].shortname;
+                SDL_Rect game_name_bg_size = {0, 0, 640, 40};
+                SDL_Rect game_name_bg_pos = {0, 440};
+                
                 SDL_BlitSurface(transparent_bg, &game_name_bg_size, screen, &game_name_bg_pos);
 
                 if (current_game > 0) {
@@ -411,10 +411,10 @@ int main(void)
                 // Display luminosity slider
                 SDL_Surface* brightness = resource_getBrightness(settings.brightness);
                 bool vertical = brightness->h > brightness->w;
-                SDL_Rect brightness_rect = {0, (view_mode == 0 ? 240 : 210) - brightness->h / 2};
+                SDL_Rect brightness_rect = {0, 240 - brightness->h / 2};
                 if (!vertical) {
                     brightness_rect.x = 320 - brightness->w / 2;
-                    brightness_rect.y = view_mode == 0 ? 60 : 0;
+                    brightness_rect.y = header_height;
                 }
                 SDL_BlitSurface(brightness, NULL, screen, &brightness_rect);
             }
@@ -430,7 +430,6 @@ int main(void)
     screen = SDL_CreateRGBSurface(SDL_HWSURFACE, 640,480, 32, 0,0,0,0);
 
     remove("/mnt/SDCARD/.tmp_update/.runGameSwitcher");
-    remove("/mnt/SDCARD/.tmp_update/cmd_to_run.sh");
     if (nExitToMiyoo != 1){
         print_debug("Resuming game");
         FILE *file = fopen("/mnt/SDCARD/.tmp_update/cmd_to_run.sh", "w");
@@ -438,6 +437,7 @@ int main(void)
         fclose(file);
     }
     else {
+        remove("/mnt/SDCARD/.tmp_update/cmd_to_run.sh");
         print_debug("Exiting to menu");
     }
 
