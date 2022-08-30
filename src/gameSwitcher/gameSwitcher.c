@@ -58,11 +58,14 @@
 #define GPIO_DIR2 "/sys/devices/gpiochip0/gpio/"
 
 static bool quit = false;
+static bool exit_to_menu = false;
+
 static void sigHandler(int sig)
 {
     switch (sig) {
         case SIGINT:
         case SIGTERM:
+            exit_to_menu = true;
             quit = true;
             break;
         default: break;
@@ -183,6 +186,8 @@ void removeCurrentItem() {
 
 SDL_Surface* loadRomscreen(int index)
 {
+    if (index < 0 || index >= game_list_len)
+        return NULL;
     Game_s *game = &game_list[index];
     char currPicture[STR_MAX];
     sprintf(currPicture, ROM_SCREENS_DIR "/%"PRIu32".png", game->hash);
@@ -190,7 +195,7 @@ SDL_Surface* loadRomscreen(int index)
         sprintf(currPicture, ROM_SCREENS_DIR "/%s.png", file_removeExtension(game->name));
     if (exists(currPicture))
         return IMG_Load(currPicture);
-    print_debug("Rom screen failed");
+    printf_debug("Rom screen not found (index=%d, path=%s)\n", index, currPicture);
     return NULL;
 }
 
@@ -212,22 +217,16 @@ int main(void)
     signal(SIGTERM, sigHandler);
 
     readHistory();
-
     print_debug("Read ROM DB and history");
 
+    print_debug("Loading");
     imageCache_load(&current_game, loadRomscreen, game_list_len);
-
 	settings_load();
 	lang_load();
 
-    SDL_Color color_white = {255, 255, 255};
-
-    int nExitToMiyoo = 0;
-
     SDL_InitDefault(true);
-
-    print_debug("Loading images");
     
+    SDL_Color color_white = {255, 255, 255};
     SDL_Surface *transparent_bg = SDL_CreateRGBSurface(0, 640, 480, 32,
         0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000);
     SDL_FillRect(transparent_bg, NULL, 0xBE000000);
@@ -262,7 +261,7 @@ int main(void)
 
         if (updateKeystate(keystate, &quit, true, &changed_key)) {
 			if (keystate[SW_BTN_MENU] == PRESSED) {
-                nExitToMiyoo = 1;
+                exit_to_menu = true;
                 break;
             }
 
@@ -430,15 +429,15 @@ int main(void)
     screen = SDL_CreateRGBSurface(SDL_HWSURFACE, 640,480, 32, 0,0,0,0);
 
     remove("/mnt/SDCARD/.tmp_update/.runGameSwitcher");
-    if (nExitToMiyoo != 1){
+    remove("/mnt/SDCARD/.tmp_update/cmd_to_run.sh");
+
+    if (exit_to_menu)
+        print_debug("Exiting to menu");
+    else {
         print_debug("Resuming game");
         FILE *file = fopen("/mnt/SDCARD/.tmp_update/cmd_to_run.sh", "w");
         fputs(game_list[current_game].RACommand, file);
         fclose(file);
-    }
-    else {
-        remove("/mnt/SDCARD/.tmp_update/cmd_to_run.sh");
-        print_debug("Exiting to menu");
     }
 
     // #ifndef PLATFORM_MIYOOMINI
