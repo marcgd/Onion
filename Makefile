@@ -1,8 +1,8 @@
 ###########################################################
 
 TARGET=Onion
-VERSION=4.0.0-rc
-RA_SUBVERSION=0.1.1
+VERSION=4.0.0-rc2
+RA_SUBVERSION=0.1.3
 
 ###########################################################
 
@@ -14,10 +14,10 @@ SRC_DIR             := $(ROOT_DIR)/src
 THIRD_PARTY_DIR     := $(ROOT_DIR)/third-party
 BUILD_DIR           := $(ROOT_DIR)/build
 BUILD_TEST_DIR      := $(ROOT_DIR)/build_test
+TEST_SRC_DIR		:= $(ROOT_DIR)/test
 BIN_DIR             := $(ROOT_DIR)/build/.tmp_update/bin
-DIST_FULL           := $(ROOT_DIR)/dist/full
-DIST_CORE           := $(ROOT_DIR)/dist/core
-INSTALLER_DIR       := $(DIST_FULL)/miyoo/app/.tmp_update
+DIST_DIR            := $(ROOT_DIR)/dist
+INSTALLER_DIR       := $(DIST_DIR)/miyoo/app/.tmp_update
 RELEASE_DIR         := $(ROOT_DIR)/release
 STATIC_BUILD        := $(ROOT_DIR)/static/build
 STATIC_DIST         := $(ROOT_DIR)/static/dist
@@ -37,7 +37,7 @@ include ./src/common/commands.mk
 
 ###########################################################
 
-.PHONY: all version core apps external release clean git-clean with-toolchain patch lib test
+.PHONY: all version core apps external release clean deepclean git-clean with-toolchain patch lib test
 
 all: dist
 
@@ -49,11 +49,11 @@ print-version:
 
 $(CACHE)/.setup:
 	@$(ECHO) $(PRINT_RECIPE)
-	@mkdir -p $(BUILD_DIR) $(DIST_FULL) $(DIST_CORE) $(RELEASE_DIR)
+	@mkdir -p $(BUILD_DIR) $(DIST_DIR) $(RELEASE_DIR)
 	@rsync -a --exclude='.gitkeep' $(STATIC_BUILD)/ $(BUILD_DIR)
-	@rsync -a --exclude='.gitkeep' $(STATIC_DIST)/ $(DIST_FULL)
+	@rsync -a --exclude='.gitkeep' $(STATIC_DIST)/ $(DIST_DIR)
 # Copy shared libraries
-	@cp -R $(ROOT_DIR)/lib/. $(DIST_FULL)/miyoo/app/.tmp_update/lib
+	@cp -R $(ROOT_DIR)/lib/. $(DIST_DIR)/miyoo/app/.tmp_update/lib
 # Set version number
 	@mkdir -p $(BUILD_DIR)/.tmp_update/onionVersion
 	@echo -n "$(VERSION)" > $(BUILD_DIR)/.tmp_update/onionVersion/version.txt
@@ -97,7 +97,7 @@ core: $(CACHE)/.setup
 	@cd $(SRC_DIR)/prompt && BUILD_DIR=$(BIN_DIR) make
 	@cd $(SRC_DIR)/batmon && BUILD_DIR=$(BIN_DIR) make
 # Build dependencies for installer
-	@mkdir -p $(DIST_FULL)/miyoo/app/.tmp_update/bin
+	@mkdir -p $(DIST_DIR)/miyoo/app/.tmp_update/bin
 	@cd $(SRC_DIR)/installUI && BUILD_DIR=$(INSTALLER_DIR)/bin/ make
 	@cp $(BIN_DIR)/prompt $(INSTALLER_DIR)/bin/
 	@cp $(BIN_DIR)/batmon $(INSTALLER_DIR)/bin/
@@ -126,34 +126,35 @@ dist: build
 	@$(ECHO) $(PRINT_RECIPE)
 # Package RetroArch separately
 	@cd $(BUILD_DIR) && zip -rq retroarch.pak RetroArch
-	@mv -f $(BUILD_DIR)/RetroArch $(ROOT_DIR)/cache/RetroArch
-	@mkdir -p $(DIST_FULL)/RetroArch
-	@mv $(BUILD_DIR)/retroarch.pak $(DIST_FULL)/RetroArch/
-	@echo $(RA_SUBVERSION) > $(DIST_FULL)/RetroArch/ra_package_version.txt
+	@mkdir -p $(DIST_DIR)/RetroArch
+	@mv $(BUILD_DIR)/retroarch.pak $(DIST_DIR)/RetroArch/
+	@echo $(RA_SUBVERSION) > $(DIST_DIR)/RetroArch/ra_package_version.txt
 # Package configs
 	@mkdir -p $(ROOT_DIR)/temp/configs $(BUILD_DIR)/.tmp_update/config
 	@rsync -a --exclude='.gitkeep' $(STATIC_CONFIGS)/ $(ROOT_DIR)/temp/configs
 	@cp -R $(ROOT_DIR)/temp/configs/Saves/CurrentProfile/ $(ROOT_DIR)/temp/configs/Saves/GuestProfile
 	@cd $(ROOT_DIR)/temp/configs && zip -rq $(BUILD_DIR)/.tmp_update/config/configs.pak .
-# Package core
-	@cd $(BUILD_DIR) && zip -rq $(DIST_FULL)/miyoo/app/.tmp_update/onion.pak .
-# Create core-only dist
-	@cp -R $(DIST_FULL)/.tmp_update $(DIST_CORE)/.tmp_update
-	@cp -R $(DIST_FULL)/miyoo $(DIST_CORE)/miyoo
-# Restore RetroArch in build dir
-	@mv -f $(ROOT_DIR)/cache/RetroArch $(BUILD_DIR)/RetroArch
+	@rm -rf $(ROOT_DIR)/temp/configs
+	@rmdir $(ROOT_DIR)/temp
+# Package Onion core
+	@cd $(BUILD_DIR) && zip -rq $(DIST_DIR)/miyoo/app/.tmp_update/onion.pak .
 
 release: dist
 	@$(ECHO) $(PRINT_RECIPE)
-	@rm -f $(RELEASE_DIR)/$(RELEASE_NAME)-full.zip $(RELEASE_DIR)/$(RELEASE_NAME)-core.zip
-	@cd $(DIST_FULL) && zip -rq $(RELEASE_DIR)/$(RELEASE_NAME)-full.zip .
-	@cd $(DIST_CORE) && zip -rq $(RELEASE_DIR)/$(RELEASE_NAME)-core.zip .
+	@rm -f $(RELEASE_DIR)/$(RELEASE_NAME).zip
+	@cd $(DIST_DIR) && zip -rq $(RELEASE_DIR)/$(RELEASE_NAME).zip .
 
 clean:
 	@$(ECHO) $(PRINT_RECIPE)
 	@rm -rf $(BUILD_DIR) $(BUILD_TEST_DIR) $(ROOT_DIR)/dist $(ROOT_DIR)/temp/configs
 	@rm -f $(CACHE)/.setup
 	@find include src -type f -name *.o -exec rm -f {} \;
+
+deepclean: clean
+	@cd $(THIRD_PARTY_DIR)/RetroArch && make clean
+	@cd $(THIRD_PARTY_DIR)/SearchFilter && make clean
+	@cd $(THIRD_PARTY_DIR)/Terminal && make clean
+	@cd $(THIRD_PARTY_DIR)/DinguxCommander && make clean
 
 dev: clean
 	@$(MAKE_DEV)
@@ -183,5 +184,6 @@ lib:
 	@cd $(ROOT_DIR)/include/SDL && make clean && make
 
 test:
-	@mkdir -p $(BUILD_TEST_DIR) && cd $(ROOT_DIR)/test && BUILD_DIR=$(BUILD_TEST_DIR)/ make
-	$(BUILD_TEST_DIR)/test
+	@mkdir -p $(BUILD_TEST_DIR)/infoPanel_test_data && cd $(TEST_SRC_DIR) && BUILD_DIR=$(BUILD_TEST_DIR)/ make dev
+	@cp -R $(TEST_SRC_DIR)/infoPanel_test_data $(BUILD_TEST_DIR)/
+	cd $(BUILD_TEST_DIR) && ./test

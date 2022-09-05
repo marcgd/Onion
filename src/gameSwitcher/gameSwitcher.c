@@ -101,9 +101,9 @@ int bDisplayBoxArt = 0;
 
 int searchRomDB(char* romName){
     int position = -1;
-
-    for (int i = 0 ; i < rom_list_len ; i++) {
-        if (strcmp(rom_list[i].name,romName) == 0){
+    
+    for (int i = 0; i < rom_list_len; i++) {
+        if (strcmp(rom_list[i].name, romName) == 0 || strcmp(file_removeExtension(rom_list[i].name), romName) == 0) {
             position = i;
             break;
         }
@@ -162,7 +162,7 @@ void readHistory()
 
         Game_s *game = &game_list[game_list_len];
         sprintf(game->RACommand, "LD_PRELOAD=/mnt/SDCARD/miyoo/lib/libpadsp.so ./retroarch -v -L \"%s\" \"%s\"", core_path, path);
-        strcpy(game->name, basename(path));
+        strcpy(game->name, file_removeExtension(basename(path)));
         game->hash = FNV1A_Pippip_Yurii(path, strlen(path));
         game->jsonIndex = nbGame;
 
@@ -172,7 +172,7 @@ void readHistory()
     for (int i = 0; i < game_list_len; i++) {
         Game_s *game = &game_list[i];
         char shortname[STR_MAX];
-        removeParentheses(shortname, file_removeExtension(game->name));
+        removeParentheses(shortname, game->name);
         strcpy(game->shortname, shortname);
     }
 }
@@ -262,8 +262,8 @@ int main(void)
         if (updateKeystate(keystate, &quit, true, &changed_key)) {
 			if (keystate[SW_BTN_MENU] == PRESSED) {
                 exit_to_menu = true;
-                break;
-            }
+                    break;
+                }
 
             if (keystate[SW_BTN_RIGHT] >= PRESSED) {
                 if (current_game < game_list_len - 1) {
@@ -368,7 +368,7 @@ int main(void)
             else {
                 SDL_Surface *imageBackgroundGame = imageCache_getItem(&current_game);
                 if (imageBackgroundGame != NULL) {
-                    SDL_BlitSurface(imageBackgroundGame, NULL, screen, NULL);
+                        SDL_BlitSurface(imageBackgroundGame, NULL, screen, NULL);
                     image_drawn = true;
                 }
                 else {
@@ -381,7 +381,7 @@ int main(void)
                 char *game_name_str = game_list[current_game].shortname;
                 SDL_Rect game_name_bg_size = {0, 0, 640, 40};
                 SDL_Rect game_name_bg_pos = {0, 440};
-                
+
                 SDL_BlitSurface(transparent_bg, &game_name_bg_size, screen, &game_name_bg_pos);
 
                 if (current_game > 0) {
