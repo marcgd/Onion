@@ -108,6 +108,7 @@ int searchRomDB(char* romName){
             break;
         }
     }
+
     return position;
 }
 

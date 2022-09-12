@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '**/README.md'
 
 jobs:
   pre-release:
@@ -29,7 +31,6 @@ jobs:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
         automatic_release_tag: latest
         prerelease: true
-        title: "Onion (Pre-release)"
+        title: "Development Build"
         files: |
-          release/Onion-v${{ env.BUILD_VERSION }}-full.zip
-          release/Onion-v${{ env.BUILD_VERSION }}-core.zip
+          release/Onion-v${{ env.BUILD_VERSION }}.zip
